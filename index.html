@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestion des Abonnements</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Gestion des Abonnements</h1>
+
+        <!-- Zone de recherche -->
+        <input type="text" id="search-bar" placeholder="Rechercher un client par nom ou prénom">
+
+        <!-- Formulaire pour ajouter un client -->
+        <form id="client-form">
+            <input type="text" id="nom" placeholder="Nom" required>
+            <input type="text" id="prenom" placeholder="Prénom" required>
+            <input type="tel" id="telephone" placeholder="Téléphone" required>
+            <input type="number" id="montant_paye" placeholder="Montant Payé" required>
+            <input type="number" id="reste_a_payer" placeholder="Reste à Payer" required>
+            <input type="date" id="date_debut" required>
+            <input type="date" id="date_fin" required>
+            <input type="email" id="email" placeholder="Email" required>
+            <button type="submit">Ajouter Client</button>
+        </form>
+
+        <!-- Liste des clients -->
+        <h2>Liste des Clients</h2>
+        <div id="client-list"></div>
+
+        <!-- Bouton pour afficher le tableau -->
+        <button id="show-table">Afficher Détails en Tableau</button>
+        <!-- Bouton pour afficher les abonnements terminés -->
+        <button id="show-expired">Afficher Abonnements Terminés</button>
+
+        <!-- Tableau des clients avec les totaux -->
+        <table id="client-table" class="hidden">
+            <thead>
+                <tr>
+                    <th>Nom</th>
+                    <th>Prénom</th>
+                    <th>Téléphone</th>
+                    <th>Email</th>
+                    <th>Montant  Payé</th>
+                    <th>Reste à Payer</th>
+                    <th>Date Début</th>
+                    <th>Date Fin</th>
+                    <th>Durée (mois/jours)</th>
+                </tr>
+            </thead>
+            <tbody id="client-table-body"></tbody>
+        </table>
+    </div>
+
+    <script>
+        let clients = [];
+        let editingClientIndex = null;
+
+        // Charger les clients depuis le LocalStorage lors du chargement de la page
+        document.addEventListener('DOMContentLoaded', chargerClients);
+
+        document.getElementById('client-form').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const nom = document.getElementById('nom').value;
+            const prenom = document.getElementById('prenom').value;
+            const telephone = document.getElementById('telephone').value;
+            const montant_paye = document.getElementById('montant_paye').value;
+            const reste_a_payer = document.getElementById('reste_a_payer').value;
+            const date_debut = document.getElementById('date_debut').value;
+            const date_fin = document.getElementById('date_fin').value;
+            const email = document.getElementById('email').value;
+
+            const client = {
+                nom,
+                prenom,
+                telephone,
+                montant_paye,
+                reste_a_payer,
+                date_debut,
+                date_fin,
+                email
+            };
+
+            if (editingClientIndex !== null) {
+                clients[editingClientIndex] = client;
+                editingClientIndex = null;
+            } else {
+                clients.push(client);
+            }
+
+            document.getElementById('client-form').reset();
+            afficherClients();
+            afficherTableauClients();
+            sauvegarderClients(); // Sauvegarder dans le LocalStorage
+        });
+
+        function afficherClients(filteredClients = clients) {
+            const clientList = document.getElementById('client-list');
+            clientList.innerHTML = '';
+
+            filteredClients.forEach((client, index) => {
+                const difference = calculerDifference(client.date_debut, client.date_fin);
+                const tempsRestant = calculerTempsRestant(client.date_fin);
+                const clientItem = document.createElement('div');
+                clientItem.classList.add('client-item');
+                clientItem.innerHTML = `
+                    <p><strong>Nom: </strong>${client.nom} ${client.prenom}</p>
+                    <p><strong>Téléphone: </strong>${client.telephone}</p>
+                    <p><strong>Montant Payé: </strong>${client.montant_paye}</p>
+                    <p><strong>Reste à Payer: </strong>${client.reste_a_payer}</p>
+                    <p><strong>Date de Début: </strong>${client.date_debut}</p>
+                    <p><strong>Date de Fin: </strong>${client.date_fin}</p>
+                    <p><strong>Durée de l'abonnement: </strong>${difference.mois} mois et ${difference.jours} jours</p>
+                    <p style="color: ${tempsRestant.color};"><strong>${tempsRestant.message}</strong></p>
+                    <p><strong>Email: </strong>${client.email}</p>
+                    <button onclick="modifierClient(${index})">Modifier</button>
+                    <button class="delete-button" onclick="supprimerClient(${index})">Supprimer</button>
+                    <button class="whatsapp-button" onclick="envoyerWhatsapp('${client.telephone}', '${client.nom}', '${client.prenom}', ${client.reste_a_payer}, '${client.date_fin}')">Envoyer Réclamation</button>
+                `;
+                clientList.appendChild(clientItem);
+            });
+        }
+
+        function afficherTableauClients() {
+            const tableBody = document.getElementById('client-table-body');
+            tableBody.innerHTML = '';
+
+            let totalMontantPaye = 0;
+            let totalResteAPayer = 0;
+
+            clients.forEach(client => {
+                const difference = calculerDifference(client.date_debut, client.date_fin);
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${client.nom}</td>
+                    <td>${client.prenom}</td>
+                    <td>${client.telephone}</td>
+                    <td>${client.email}</td>
+                    <td>${client.montant_paye}</td>
+                    <td>${client.reste_a_payer}</td>
+                    <td>${client.date_debut}</td>
+                    <td>${client.date_fin}</td>
+                    <td>${difference.mois} mois et ${difference.jours} jours</td>
+                `;
+                tableBody.appendChild(row);
+
+                totalMontantPaye += parseFloat(client.montant_paye);
+                totalResteAPayer += parseFloat(client.reste_a_payer);
+            });
+
+            const totalRow = document.createElement('tr');
+            totalRow.innerHTML = `
+                <td colspan="4"><strong>Total</strong></td>
+                <td><strong>${totalMontantPaye.toFixed(2)}</strong></td>
+                <td><strong>${totalResteAPayer.toFixed(2)}</strong></td>
+                <td colspan="3"></td>
+            `;
+            tableBody.appendChild(totalRow);
+        }
+
+        // Fonction pour calculer la différence en mois et jours entre deux dates
+        function calculerDifference(dateDebut, dateFin) {
+            const debut = new Date(dateDebut);
+            const fin = new Date(dateFin);
+
+            let mois = fin.getMonth() - debut.getMonth() + (12 * (fin.getFullYear() - debut.getFullYear()));
+            let jours = fin.getDate() - debut.getDate();
+
+            if (jours < 0) {
+                mois--;
+                const dernierJourMoisPrecedent = new Date(fin.getFullYear(), fin.getMonth(), 0).getDate();
+                jours += dernierJourMoisPrecedent;
+            }
+
+            return { mois, jours };
+        }
+
+        // Fonction pour calculer le temps restant avant la fin de l'abonnement
+        function calculerTempsRestant(dateFin) {
+            const aujourdHui = new Date();
+            const fin = new Date(dateFin);
+            const difference = fin - aujourdHui; // Différence en millisecondes
+
+            if (difference < 0) {
+                return { message: "Abonnement terminé", color: "red" };
+            } else {
+                const joursRestants = Math.ceil(difference / (1000 * 60 * 60 * 24)); // Conversion en jours
+                return { message: `Il reste ${joursRestants} jours avant la fin de l'abonnement`, color: "green" };
+            }
+        }
+
+        // Toggle pour afficher/cacher le tableau
+        document.getElementById('show-table').addEventListener('click', function() {
+            const clientTable = document.getElementById('client-table');
+            const clientForm = document.getElementById('client-form');
+            const clientList = document.getElementById('client-list');
+            const searchBar = document.getElementById('search-bar');
+            const showTableButton = document.getElementById('show-table');
+
+            if (clientTable.classList.contains('hidden')) {
+                clientTable.classList.remove('hidden');
+                clientForm.classList.add('hidden');
+                clientList.classList.add('hidden');
+                searchBar.classList.add('hidden');
+                showTableButton.textContent = "Masquer Détails en Tableau";
+            } else {
+                clientTable.classList.add('hidden');
+                clientForm.classList.remove('hidden');
+                clientList.classList.remove('hidden');
+                searchBar.classList.remove('hidden');
+                showTableButton.textContent = "Afficher Détails en Tableau";
+            }
+        });
+
+        // Affichage des abonnements terminés (toggle)
+        document.getElementById('show-expired').addEventListener('click', function() {
+            const clientForm = document.getElementById('client-form');
+            const clientList = document.getElementById('client-list');
+            const searchBar = document.getElementById('search-bar');
+            const expiredButton = document.getElementById('show-expired');
+
+            const isExpiredShown = expiredButton.textContent.includes("Masquer");
+
+            if (isExpiredShown) {
+                expiredButton.textContent = "Afficher Abonnements Terminés";
+                clientForm.classList.remove('hidden');
+                clientList.classList.remove('hidden');
+                searchBar.classList.remove('hidden');
+                afficherClients(clients);  // Affiche tous les clients
+            } else {
+                expiredButton.textContent = "Masquer Abonnements Terminés";
+                const clientsExpires = clients.filter(client => {
+                    const aujourdHui = new Date();
+                    const fin = new Date(client.date_fin);
+                    return fin < aujourdHui; // L'abonnement est terminé si la date de fin est passée
+                });
+                clientForm.classList.add('hidden');
+                clientList.classList.remove('hidden');
+                searchBar.classList.add('hidden');
+                afficherClients(clientsExpires);
+            }
+        });
+
+        document.getElementById('search-bar').addEventListener('input', function(event) {
+            const searchTerm = event.target.value.toLowerCase();
+            const filteredClients = clients.filter(client => 
+                client.nom.toLowerCase().includes(searchTerm) || client.prenom.toLowerCase().includes(searchTerm)
+            );
+            afficherClients(filteredClients);
+        });
+
+        function sauvegarderClients() {
+            localStorage.setItem('clients', JSON.stringify(clients));
+        }
+
+        function chargerClients() {
+            const clientsStockes = localStorage.getItem('clients');
+            if (clientsStockes) {
+                clients = JSON.parse(clientsStockes);
+                afficherClients();
+                afficherTableauClients();
+            }
+        }
+
+        function modifierClient(index) {
+            const client = clients[index];
+            document.getElementById('nom').value = client.nom;
+            document.getElementById('prenom').value = client.prenom;
+            document.getElementById('telephone').value = client.telephone;
+            document.getElementById('montant_paye').value = client.montant_paye;
+            document.getElementById('reste_a_payer').value = client.reste_a_payer;
+            document.getElementById('date_debut').value = client.date_debut;
+            document.getElementById('date_fin').value = client.date_fin;
+            document.getElementById('email').value = client.email;
+
+            editingClientIndex = index;
+        }
+
+        function supprimerClient(index) {
+            clients.splice(index, 1);
+            afficherClients();
+            afficherTableauClients();
+            sauvegarderClients();
+        }
+
+        // Fonction pour envoyer un message WhatsApp
+        function envoyerWhatsapp(telephone, nom, prenom, reste_a_payer, date_fin) {
+            const aujourdHui = new Date();
+            const fin = new Date(date_fin);
+            let message;
+
+            if (fin < aujourdHui) {
+                // Si l'abonnement est terminé
+                message = `Bonjour ${nom} ${prenom},\n\nVotre abonnement est terminé. Nous vous invitons à le renouveler pour continuer à bénéficier de nos services.\nMerci de nous contacter pour plus de détails.`;
+            } else {
+                // Si l'abonnement est encore actif
+                message = `Bonjour ${nom} ${prenom},\n\nIl vous reste un montant de ${reste_a_payer} DH à payer pour votre abonnement.\nMerci de régulariser votre paiement.`;
+            }
+
+            // Encode le message et envoie via WhatsApp
+            const url = `https://wa.me/${telephone}?text=${encodeURIComponent(message)}`;
+            window.open(url, '_blank');
+        }
+    </script>
+</body>
+</html>
